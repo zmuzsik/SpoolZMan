@@ -8,6 +8,7 @@ This app lets you select a filament spool from Spoolman, enter grams used, and r
 1. Open a terminal in `backend`.
 2. Run:
    ```powershell
+   npm install
    node server.js
    ```
 
