@@ -25,3 +25,5 @@ dist-ssr
 /backend/node_modules/
 /frontend/node_modules/
 /backend/usage.db
+/frontend/package-lock.json
+/backend/package-lock.json
