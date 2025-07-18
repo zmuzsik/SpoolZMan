@@ -27,4 +27,4 @@ dist-ssr
 /frontend/package-lock.json
 /backend/package-lock.json
 *.db
-backend/usage.db
+/backend/usage.db
