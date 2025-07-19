@@ -40,7 +40,8 @@ db.serialize(() => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     spool_id TEXT,
     used_at TEXT,
-    weight REAL
+    weight REAL,
+    note TEXT
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -60,6 +61,26 @@ function loadSpoolmanUrlFromDb() {
   });
 }
 loadSpoolmanUrlFromDb();
+
+
+function getUsageHistory(spoolId) {
+  return new Promise((resolve, reject) => {
+    const query = `
+      SELECT used_at as date, weight, note FROM usage WHERE spool_id = ? ORDER BY used_at DESC`;
+    db.all(query, [spoolId], (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        const usageHistory = rows.map(row => ({
+          date: row.date,
+          weight: row.weight,
+          ...(row.note && { note: row.note })
+        }));
+        resolve(usageHistory);
+      }
+    });
+  });
+}
 
 // Set Spoolman URL and save to DB
 app.post('/api/config', (req, res) => {
@@ -120,11 +141,11 @@ app.get('/api/spools', async (req, res) => {
 
 // Register usage
 app.post('/api/usage', async (req, res) => {
-  const { spool_id, weight } = req.body;
+  const { spool_id, weight, note } = req.body;
   const used_at = new Date().toISOString();
   
   try {
-    console.log(`Updating Spoolman spool ${spool_id} with additional weight ${weight} and last_used ${used_at}`);
+    console.log(`Updating Spoolman spool ${spool_id} with additional weight ${weight} and last_used ${used_at} and note "${note}"`);
     
     // First, get the current spool data to calculate the new remaining weight
     const currentSpoolResponse = await axios.get(`${getSpoolmanApiUrl()}/spool/${spool_id}`);
@@ -143,8 +164,8 @@ app.post('/api/usage', async (req, res) => {
 
     // Then save to local DB if Spoolman update was successful
     db.run(
-      'INSERT INTO usage (spool_id, used_at, weight) VALUES (?, ?, ?)',
-      [spool_id, used_at, weight],
+      'INSERT INTO usage (spool_id, used_at, weight, note) VALUES (?, ?, ?, ?)',
+      [spool_id, used_at, weight, note],
       function (err) {
         if (err) {
           console.error('Error saving to local DB:', err);
@@ -159,6 +180,17 @@ app.post('/api/usage', async (req, res) => {
       error: 'Failed to update Spoolman',
       details: err.response?.data?.detail || err.message 
     });
+  }
+});
+
+app.get('/api/usage/:spoolId', async (req, res) => {
+  try {
+    const spoolId = req.params.spoolId;
+    // Fetch usage history for this spool from your database
+    const usageHistory = await getUsageHistory(spoolId);
+    res.json(usageHistory);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

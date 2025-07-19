@@ -8,6 +8,7 @@ function App() {
   const [spools, setSpools] = useState([]);
   const [selectedSpool, setSelectedSpool] = useState('');
   const [gramsUsed, setGramsUsed] = useState('');
+  const [note, setNote] = useState('');
   const [remaining, setRemaining] = useState([]);
   const [message, setMessage] = useState('');
   const [connected, setConnected] = useState(null); // null: unknown, true: connected, false: not connected
@@ -15,7 +16,12 @@ function App() {
   const [spoolmanInfo, setSpoolmanInfo] = useState(null);
   const [infoError, setInfoError] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0); // Add refresh trigger
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  
+  // New state for right panel and usage tracking
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const [selectedSpoolForUsage, setSelectedSpoolForUsage] = useState(null);
+  const [usageHistory, setUsageHistory] = useState({});
 
   // Check connection to Spoolman using /api/info
   const checkConnection = (url) => {
@@ -28,6 +34,19 @@ function App() {
         }
       })
       .catch(() => setConnected(false));
+  };
+
+  // Fetch usage history for a specific spool
+  const fetchUsageHistory = async (spoolId) => {
+    try {
+      const res = await fetch(`/api/usage/${spoolId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUsageHistory(prev => ({ ...prev, [spoolId]: data }));
+      }
+    } catch (err) {
+      console.error('Error fetching usage history:', err);
+    }
   };
 
   useEffect(() => {
@@ -108,7 +127,7 @@ function App() {
     fetch(`/api/usage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spool_id: selectedSpool, weight: parseFloat(gramsUsed) })
+      body: JSON.stringify({ spool_id: selectedSpool, weight: parseFloat(gramsUsed), note: note }) // Note is empty for now
     })
       .then(res => {
         if (!res.ok) throw new Error('Failed to register usage');
@@ -118,7 +137,11 @@ function App() {
         if (data.success) {
           setMessage('Usage registered!');
           setGramsUsed('');
-          setRefreshTrigger(prev => prev + 1); // Force refresh
+          setRefreshTrigger(prev => prev + 1);
+          // Refresh usage history for the selected spool
+          if (selectedSpoolForUsage) {
+            fetchUsageHistory(selectedSpoolForUsage.id);
+          }
         } else {
           setMessage(data.error || 'Error registering usage');
         }
@@ -147,6 +170,12 @@ function App() {
     setInfoModalOpen(true);
   };
 
+  // Handle spool row click to show usage details
+  const handleSpoolClick = (spool) => {
+    setSelectedSpoolForUsage(spool);
+    fetchUsageHistory(spool.id);
+  };
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -158,10 +187,12 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const rightPanelWidth = rightPanelCollapsed ? '50px' : '280px';
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', gap: '0' }}>
-      {/* Main Content Area */}
-      <div style={{ flex: 1, padding: '20px' }}>
+      {/* Main Content Area - Now takes more space */}
+      <div style={{ flex: 1, padding: '20px', minWidth: '0' }}>
         <div className="container" style={{ maxWidth: 'none', margin: '0', padding: '0' }}>
           <h1>Spoolman Filament Usage</h1>
           
@@ -280,6 +311,24 @@ function App() {
                 }}
               />
             </label>
+              <label style={{ width: '200px' }}>
+              Note:
+              <input
+                type="text"
+                placeholder="Optional note"
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                style={{ 
+                  width: '100%',
+                  backgroundColor: '#1e1e1e',
+                  color: '#fff',
+                  border: '1px solid #444',
+                  borderRadius: '4px',
+                  padding: '8px',
+                  marginTop: '8px'
+                }}
+              />
+            </label>
             <button 
               type="submit"
               style={{
@@ -298,8 +347,9 @@ function App() {
           
           {message && <p style={{ color: 'green', marginBottom: '24px' }}>{message}</p>}
           
-          <hr style={{ margin: '24px 0' }} />
-          
+          <div style={{ display: 'flex', gap: '20px' }}>
+            {/* Filament Table - Now takes more space */}
+            <div style={{ flex: selectedSpoolForUsage ? '1' : '1' }}>
           <h2>Remaining Filament</h2>
           <table style={{ 
             width: '100%', 
@@ -318,10 +368,15 @@ function App() {
             </thead>
             <tbody>
               {spools.map(spool => (
-                <tr key={spool.id} style={{ 
+                    <tr 
+                      key={spool.id} 
+                      style={{ 
                   borderTop: '1px solid #444',
-                  backgroundColor: spool.id === parseInt(selectedSpool) ? '#2d2d2d' : 'transparent'
-                }}>
+                        backgroundColor: spool.id === selectedSpoolForUsage?.id ? '#2d2d2d' : 'transparent',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => handleSpoolClick(spool)}
+                    >
                   <td style={{ padding: '8px' }}>
                     {spool.filament?.color_hex && (
                       <span style={{
@@ -343,19 +398,128 @@ function App() {
               ))}
             </tbody>
           </table>
+            </div>
+
+            {/* Usage Details Panel */}
+            {selectedSpoolForUsage && (
+              <div style={{ 
+                width: '400px',
+                backgroundColor: '#1e1e1e',
+                border: '1px solid #444',
+                borderRadius: '8px',
+                padding: '16px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ margin: '0', color: '#ff9800' }}>Usage History</h3>
+                  <button 
+                    onClick={() => setSelectedSpoolForUsage(null)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#999',
+                      cursor: 'pointer',
+                      fontSize: '18px'
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    {selectedSpoolForUsage.filament?.color_hex && (
+                      <span style={{
+                        display: 'inline-block',
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: `#${selectedSpoolForUsage.filament.color_hex}`,
+                        border: '1px solid #666'
+                      }} />
+                    )}
+                    <strong>{selectedSpoolForUsage.filament?.name || 'Unknown'}</strong>
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#999' }}>
+                    {selectedSpoolForUsage.filament?.vendor?.name || 'Unknown Vendor'}
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#999' }}>
+                    Remaining: {selectedSpoolForUsage.remaining_weight?.toFixed(1) || 'N/A'}g
+                  </div>
+                </div>
+
+                {/* Usage History List */}
+                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  {usageHistory[selectedSpoolForUsage.id] ? (
+                    usageHistory[selectedSpoolForUsage.id].length > 0 ? (
+                      usageHistory[selectedSpoolForUsage.id].map((usage, index) => (
+                        <div key={index} style={{
+                          padding: '8px',
+                          marginBottom: '8px',
+                          backgroundColor: '#2d2d2d',
+                          borderRadius: '4px',
+                          border: '1px solid #444'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '14px', color: '#999' }}>
+                              {new Date(usage.date).toLocaleDateString("en-SG")}
+                            </span>
+                            <span style={{ fontWeight: 'bold', color: '#ff9800' }}>
+                              {usage.weight}g
+                            </span>
+                          </div>
+                          {usage.note && (
+                            <div style={{ fontSize: '12px', color: '#ccc', marginTop: '4px' }}>
+                              Note: {usage.note}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
+                        No usage history found
+                      </div>
+                    )
+                  ) : (
+                    <div style={{ textAlign: 'center', color: '#999', padding: '20px' }}>
+                      Loading usage history...
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Settings Panel */}
+      {/* Collapsible Settings Panel */}
       <div style={{ 
-        width: '350px', 
+        width: rightPanelWidth, 
         backgroundColor: '#1a1a1a', 
         borderLeft: '1px solid #444',
-        padding: '20px',
+        padding: rightPanelCollapsed ? '10px' : '20px',
         display: 'flex',
         flexDirection: 'column',
-        gap: '20px'
+        gap: '20px',
+        transition: 'width 0.3s ease'
       }}>
+        {/* Collapse Toggle */}
+        <button
+          onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+          style={{
+            background: 'none',
+            border: '1px solid #444',
+            color: '#fff',
+            padding: '8px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            alignSelf: 'flex-start'
+          }}
+        >
+          {rightPanelCollapsed ? '→' : '←'}
+        </button>
+
+        {!rightPanelCollapsed && (
+          <>
         <h2 style={{ color: '#ff9800', marginBottom: '0' }}>Settings</h2>
         
         {/* Connection Status */}
@@ -421,7 +585,8 @@ function App() {
                   color: '#fff',
                   border: '1px solid #444',
                   borderRadius: '4px',
-                  padding: '8px'
+                      padding: '8px',
+                      boxSizing: 'border-box'
                 }}
               />
             </label>
@@ -441,6 +606,8 @@ function App() {
             </button>
           </form>
         </div>
+          </>
+        )}
       </div>
 
       {/* Info Modal */}
