@@ -137,6 +137,9 @@ function App() {
         if (data.success) {
           setMessage('Usage registered!');
           setGramsUsed('');
+          setNote('');
+          setSelectedSpool('');
+          // Trigger a refresh of spools and remaining filament
           setRefreshTrigger(prev => prev + 1);
           // Refresh usage history for the selected spool
           if (selectedSpoolForUsage) {
@@ -190,10 +193,10 @@ function App() {
   const rightPanelWidth = rightPanelCollapsed ? '50px' : '280px';
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', gap: '0' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', gap: '0', width: '100%' }}>
       {/* Main Content Area - Now takes more space */}
-      <div style={{ flex: 1, padding: '20px', minWidth: '0' }}>
-        <div className="container" style={{ maxWidth: 'none', margin: '0', padding: '0' }}>
+      <div style={{ flex: 1, padding: '20px', minWidth: '1500px'}}>
+        <div className="container" style={{ width: '100%', padding: '0' }}>
           <h1>Spoolman Filament Usage</h1>
           
           <form onSubmit={handleUsage} className="usage-form" style={{ 
@@ -204,7 +207,9 @@ function App() {
             padding: '16px',
             backgroundColor: '#1e1e1e',
             borderRadius: '8px',
-            border: '1px solid #444'
+            border: '1px solid #444',
+            width: '100%',
+            boxSizing: 'border-box'
           }}>
             <label style={{ flex: 1 }}>
               Select Spool:
@@ -213,6 +218,7 @@ function App() {
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                   style={{
                     minWidth: '300px',
+                    maxWidth: '80%',
                     padding: '5px 10px',
                     border: '1px solid #444',
                     borderRadius: '4px',
@@ -246,7 +252,7 @@ function App() {
                     top: '100%',
                     left: 0,
                     right: 0,
-                    maxHeight: '250px',
+                    maxHeight: '450px',
                     overflowY: 'auto',
                     backgroundColor: '#1e1e1e',
                     border: '1px solid #444',
@@ -292,7 +298,7 @@ function App() {
                 )}
               </div>
             </label>
-            <label style={{ width: '150px' }}>
+            <label style={{ flex: 1, minWidth: '100px', maxWidth: '200px' }}>
               Grams Used:
               <input
                 type="number"
@@ -311,7 +317,7 @@ function App() {
                 }}
               />
             </label>
-              <label style={{ width: '200px' }}>
+              <label style={{ flex: 1, minWidth: '200px' }}>
               Note:
               <input
                 type="text"
@@ -349,7 +355,7 @@ function App() {
           
           <div style={{ display: 'flex', gap: '20px' }}>
             {/* Filament Table - Now takes more space */}
-            <div style={{ flex: selectedSpoolForUsage ? '1' : '1' }}>
+            <div style={{ flex: '1', minWidth: '0' }}>
           <h2>Remaining Filament</h2>
           <table style={{ 
             width: '100%', 
@@ -403,7 +409,7 @@ function App() {
             {/* Usage Details Panel */}
             {selectedSpoolForUsage && (
               <div style={{ 
-                width: '400px',
+                flex: '0 0 400px',
                 backgroundColor: '#1e1e1e',
                 border: '1px solid #444',
                 borderRadius: '8px',
@@ -448,7 +454,7 @@ function App() {
                 </div>
 
                 {/* Usage History List */}
-                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
                   {usageHistory[selectedSpoolForUsage.id] ? (
                     usageHistory[selectedSpoolForUsage.id].length > 0 ? (
                       usageHistory[selectedSpoolForUsage.id].map((usage, index) => (
@@ -468,8 +474,13 @@ function App() {
                             </span>
                           </div>
                           {usage.note && (
-                            <div style={{ fontSize: '12px', color: '#ccc', marginTop: '4px' }}>
-                              Note: {usage.note}
+                            <div style={{ fontSize: '12px', color: '#ccc', marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontStyle: 'italic' }}>{usage.note}
+                              </span>
+                              <span style={{ fontStyle: 'italic' }}>Cost:  ${(selectedSpoolForUsage.filament?.price && selectedSpoolForUsage.initial_weight) ? 
+                                  ((usage.weight / selectedSpoolForUsage.initial_weight) * selectedSpoolForUsage.filament.price).toFixed(2) : 
+                                  'N/A'}
+                              </span>
                             </div>
                           )}
                         </div>
