@@ -18,7 +18,7 @@ This app lets you select a filament spool from Spoolman, enter grams used, and r
 ### Backend
 1. Open a terminal in `backend`.
 2. Run:
-   ```powershell
+   ```
    npm install
    node server.js
    ```
@@ -26,7 +26,7 @@ This app lets you select a filament spool from Spoolman, enter grams used, and r
 ### Frontend
 1. Open a terminal in `frontend`.
 2. Run:
-   ```powershell
+   ```
    npm install
    npm run dev
    ```
@@ -38,7 +38,7 @@ This app lets you select a filament spool from Spoolman, enter grams used, and r
 - The app automatically appends `/api/v1` to your base URL
 
 ### Flow Compensation
-- Configure automatic weight compensation for flow variations
+- Configure automatic adding of weight for flow compensation test
 - Default: +1.5g added to actual usage
 - Adjustable from 0-20g in 0.1g increments
 - Can be toggled on/off per usage entry
@@ -55,11 +55,11 @@ This app lets you select a filament spool from Spoolman, enter grams used, and r
 - Complete chronological usage history across all spools
 - Shows date, filament details, weight used, calculated cost, and notes
 - Includes both active and archived spools
-- Sortable by date (newest first)
+- Sorted by date (newest first)
 
 ## Requirements
 - Node.js
-- Local Spoolman instance running and accessible
+- Spoolman instance running and accessible
 - Spoolman spools should have price information for cost calculations
 
 ## Data Storage
