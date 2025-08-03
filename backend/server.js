@@ -27,6 +27,8 @@ app.get('/api/info', async (req, res) => {
 
 // Configurable Spoolman URL (default to Spoolman, no /api/v1)
 let spoolmanBaseUrl = 'http://192.168.0.15:7912';
+let flowCompensationValue = 1.5; // Add this line
+
 function getSpoolmanApiUrl() {
   // Always append /api/v1
   return spoolmanBaseUrl.replace(/\/$/, '') + '/api/v1';
@@ -49,8 +51,10 @@ db.serialize(() => {
   )`);
 });
 
-// Load Spoolman URL from DB on startup
-function loadSpoolmanUrlFromDb() {
+
+
+function loadSettingsFromDb() {
+  // Load Spoolman URL
   db.get('SELECT value FROM settings WHERE key = ?', ['spoolmanUrl'], (err, row) => {
     if (!err && row && typeof row.value === 'string') {
       spoolmanBaseUrl = row.value;
@@ -59,9 +63,20 @@ function loadSpoolmanUrlFromDb() {
       console.error('Error loading Spoolman URL from DB:', err.message);
     }
   });
+  
+  // Load Flow Compensation Value
+  db.get('SELECT value FROM settings WHERE key = ?', ['flowCompensationValue'], (err, row) => {
+    if (!err && row) {
+      flowCompensationValue = parseFloat(row.value) || 2;
+      console.log('Loaded Flow Compensation from DB:', flowCompensationValue);
+    } else if (err) {
+      console.error('Error loading Flow Compensation from DB:', err.message);
+    }
+  });
 }
-loadSpoolmanUrlFromDb();
 
+// Call the renamed function
+loadSettingsFromDb();
 
 function getUsageHistory(spoolId) {
   return new Promise((resolve, reject) => {
@@ -82,46 +97,89 @@ function getUsageHistory(spoolId) {
   });
 }
 
-// Set Spoolman URL and save to DB
 app.post('/api/config', (req, res) => {
   console.log('POST /api/config called with body:', req.body);
-  const url = req.body.spoolmanUrl;
-  console.log('spoolmanUrl received:', url);
-  if (typeof url !== 'string' || !url.trim()) {
-    console.log('Validation failed for spoolmanUrl:', url);
-    return res.status(400).json({ success: false, error: 'spoolmanUrl is required and must be a string' });
+  const { spoolmanUrl, flowCompensationValue: newFlowValue } = req.body;
+
+  if (spoolmanUrl && (typeof spoolmanUrl !== 'string' || !spoolmanUrl.trim())) {
+    return res.status(400).json({ success: false, error: 'spoolmanUrl must be a string' });
   }
+
   try {
-    const cleanUrl = url.replace(/\/api(\/v1)?$/, '');
-    spoolmanBaseUrl = cleanUrl;
-    // Try update first
-    db.run('UPDATE settings SET value = ? WHERE key = ?', [cleanUrl, 'spoolmanUrl'], function (err) {
-      if (err) {
-        console.error('DB update error:', err);
-        return res.status(500).json({ success: false, error: 'Failed to update URL in DB' });
-      }
-      if (this.changes === 0) {
-        // No row updated, insert new
-        db.run('INSERT INTO settings (key, value) VALUES (?, ?)', ['spoolmanUrl', cleanUrl], function (err2) {
-          if (err2) {
-            console.error('DB insert error:', err2);
-            return res.status(500).json({ success: false, error: 'Failed to insert URL in DB' });
+    const updates = [];
+
+    // Handle Spoolman URL update
+    if (spoolmanUrl) {
+      const cleanUrl = spoolmanUrl.replace(/\/api(\/v1)?$/, '');
+      updates.push(['spoolmanUrl', cleanUrl]);
+    }
+
+    // Handle flow compensation value update
+    if (newFlowValue !== undefined) {
+      updates.push(['flowCompensationValue', newFlowValue.toString()]);
+    }
+
+    // Process all updates
+    let completed = 0;
+    const total = updates.length;
+    let hasError = false;
+
+    if (total === 0) {
+      return res.json({ success: true, spoolmanUrl: spoolmanBaseUrl });
+    }
+
+    updates.forEach(([key, value]) => {
+      console.log('Loop ? to DB: ?', key, value);
+      db.run('UPDATE settings SET value = ? WHERE key = ?', [value, key], function (err) {
+        if (err && !hasError) {
+          hasError = true;
+          return res.status(500).json({ success: false, error: 'Failed to update settings' });
+        }
+
+        if (this.changes === 0) {
+          db.run('INSERT INTO settings (key, value) VALUES (?, ?)', [key, value], function (err2) {
+            if (err2 && !hasError) {
+              hasError = true;
+              return res.status(500).json({ success: false, error: 'Failed to insert settings' });
+            }
+            // Update the in-memory variable after successful DB operation
+            if (key === 'spoolmanUrl') {
+              spoolmanBaseUrl = value;
+            } else if (key === 'flowCompensationValue') {
+              flowCompensationValue = parseFloat(value) || 2;
+            }
+
+            completed++;
+            if (completed === total && !hasError) {
+              res.json({ success: true, spoolmanUrl: spoolmanBaseUrl });
+            }
+          });
+        } else {
+          // Update the in-memory variable after successful DB operation
+          if (key === 'spoolmanUrl') {
+            spoolmanBaseUrl = value;
+          } else if (key === 'flowCompensationValue') {
+            flowCompensationValue = parseFloat(value) || 2;
           }
-          res.json({ success: true, spoolmanUrl: spoolmanBaseUrl });
-        });
-      } else {
-        res.json({ success: true, spoolmanUrl: spoolmanBaseUrl });
-      }
+
+          completed++;
+          if (completed === total && !hasError) {
+            res.json({ success: true, spoolmanUrl: spoolmanBaseUrl });
+          }
+        }
+      });
+      console.log('Setting ? to DB: ?', key, value);
     });
   } catch (err) {
-    console.error('Exception in /api/config:', err);
     res.status(400).json({ success: false, error: 'Invalid request' });
   }
 });
 
-// Get Spoolman URL
 app.get('/api/config', (req, res) => {
-  res.json({ spoolmanUrl: spoolmanBaseUrl });
+  res.json({
+    spoolmanUrl: spoolmanBaseUrl,
+    flowCompensationValue: flowCompensationValue
+  });
 });
 
 // Get spools from Spoolman
@@ -143,21 +201,21 @@ app.get('/api/spools', async (req, res) => {
 app.post('/api/usage', async (req, res) => {
   const { spool_id, weight, note } = req.body;
   const used_at = new Date().toISOString();
-  
+
   try {
     console.log(`Updating Spoolman spool ${spool_id} with additional weight ${weight} and last_used ${used_at} and note "${note}"`);
-    
+
     // First, get the current spool data to calculate the new remaining weight
     const currentSpoolResponse = await axios.get(`${getSpoolmanApiUrl()}/spool/${spool_id}`);
     const currentSpool = currentSpoolResponse.data;
-    
+
     // Calculate new remaining weight: current remaining - weight used
     const newRemainingWeight = currentSpool.remaining_weight - parseFloat(weight);
-    
+
     console.log(`Current remaining: ${currentSpool.remaining_weight}g, Used: ${weight}g, New remaining: ${newRemainingWeight}g`);
-    
+
     // Update Spoolman with the new remaining weight
-    await axios.patch(`${getSpoolmanApiUrl()}/spool/${spool_id}`, { 
+    await axios.patch(`${getSpoolmanApiUrl()}/spool/${spool_id}`, {
       remaining_weight: newRemainingWeight,
       last_used: used_at
     });
@@ -176,9 +234,9 @@ app.post('/api/usage', async (req, res) => {
     );
   } catch (err) {
     console.error('Error updating Spoolman:', err.response?.data || err.message);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Failed to update Spoolman',
-      details: err.response?.data?.detail || err.message 
+      details: err.response?.data?.detail || err.message
     });
   }
 });
@@ -189,6 +247,81 @@ app.get('/api/usage/:spoolId', async (req, res) => {
     // Fetch usage history for this spool from your database
     const usageHistory = await getUsageHistory(spoolId);
     res.json(usageHistory);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add this new endpoint to server.js after the existing /api/usage/:spoolId endpoint
+
+app.get('/api/usage', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        usage.id,
+        usage.spool_id,
+        usage.used_at as date,
+        usage.weight,
+        usage.note
+      FROM usage 
+      ORDER BY usage.used_at DESC`;
+    
+    db.all(query, [], async (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      
+      try {
+        // Get spool details for each usage record
+        const spoolsResponse = await axios.get(`${getSpoolmanApiUrl()}/spool/`);
+        const spools = spoolsResponse.data.results || [];
+        const spoolsMap = {};
+        spools.forEach(spool => {
+          spoolsMap[spool.id] = spool;
+        });
+
+        // Combine usage data with spool information
+        const usageWithSpoolInfo = rows.map(row => {
+          const spool = spoolsMap[row.spool_id];
+          const cost = (spool?.filament?.price && spool?.initial_weight) 
+            ? ((row.weight / spool.initial_weight) * spool.filament.price).toFixed(2)
+            : null;
+
+          return {
+            id: row.id,
+            date: row.date,
+            weight: row.weight,
+            note: row.note,
+            spool: {
+              id: row.spool_id,
+              name: spool?.filament?.name || 'Unknown',
+              vendor: spool?.filament?.vendor?.name || 'Unknown',
+              color_hex: spool?.filament?.color_hex,
+              price: spool?.filament?.price
+            },
+            cost: cost
+          };
+        });
+
+        res.json(usageWithSpoolInfo);
+      } catch (spoolError) {
+        console.error('Error fetching spool data:', spoolError);
+        // Return usage data without spool info if Spoolman is unavailable
+        const basicUsage = rows.map(row => ({
+          id: row.id,
+          date: row.date,
+          weight: row.weight,
+          note: row.note,
+          spool: {
+            id: row.spool_id,
+            name: 'Unknown',
+            vendor: 'Unknown'
+          },
+          cost: null
+        }));
+        res.json(basicUsage);
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
