@@ -563,8 +563,9 @@ function App() {
                   </div>
                 )}
               </div>
+
             )}
-           {/* Usage Details Panel - Only show on remaining view */}
+            {/* Usage Details Panel - Only show on remaining view */}
             {currentView === 'remaining' && selectedSpoolForUsage && (
               <div style={{
                 flex: '0 0 400px',
@@ -658,171 +659,171 @@ function App() {
             )}
 
           </div>
-          </div>
         </div>
+      </div>
 
-        {/* Collapsible Settings Panel */}
-        <div style={{
-          width: rightPanelWidth,
-          backgroundColor: '#1a1a1a',
-          borderLeft: '1px solid #444',
-          padding: rightPanelCollapsed ? '10px' : '20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '20px',
-          transition: 'width 0.3s ease'
-        }}>
-          {/* Collapse Toggle */}
-          <button
-            onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-            style={{
-              background: 'none',
-              border: '1px solid #444',
-              color: '#fff',
-              padding: '8px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              alignSelf: 'flex-start'
-            }}
-          >
-            {rightPanelCollapsed ? '→' : '←'}
-          </button>
+      {/* Collapsible Settings Panel */}
+      <div style={{
+        width: rightPanelWidth,
+        backgroundColor: '#1a1a1a',
+        borderLeft: '1px solid #444',
+        padding: rightPanelCollapsed ? '10px' : '20px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '20px',
+        transition: 'width 0.3s ease'
+      }}>
+        {/* Collapse Toggle */}
+        <button
+          onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+          style={{
+            background: 'none',
+            border: '1px solid #444',
+            color: '#fff',
+            padding: '8px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            alignSelf: 'flex-start'
+          }}
+        >
+          {rightPanelCollapsed ? '→' : '←'}
+        </button>
 
-          {!rightPanelCollapsed && (
-            <>
-              <h2 style={{ color: '#ff9800', marginBottom: '0' }}>Settings</h2>
+        {!rightPanelCollapsed && (
+          <>
+            <h2 style={{ color: '#ff9800', marginBottom: '0' }}>Settings</h2>
 
-              {/* Connection Status */}
-              <div style={{
-                padding: '16px',
-                backgroundColor: '#232323',
-                borderRadius: '8px',
-                border: '1px solid #444'
-              }}>
-                <h3 style={{ color: '#ff9800', marginBottom: '12px', fontSize: '16px' }}>Connection Status</h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{
-                    display: 'inline-block',
-                    width: '16px',
-                    height: '16px',
-                    borderRadius: '50%',
-                    background: connected === null ? '#888' : connected ? '#4caf50' : '#f44336',
-                    border: '2px solid #222'
-                  }} />
-                  <span style={{
-                    color: connected === null ? '#888' : connected ? '#4caf50' : '#f44336',
-                    fontWeight: 'bold'
-                  }}>
-                    {connected === null ? 'Unknown' : connected ? 'Connected' : 'Not Connected'}
-                  </span>
-                </div>
+            {/* Connection Status */}
+            <div style={{
+              padding: '16px',
+              backgroundColor: '#232323',
+              borderRadius: '8px',
+              border: '1px solid #444'
+            }}>
+              <h3 style={{ color: '#ff9800', marginBottom: '12px', fontSize: '16px' }}>Connection Status</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{
+                  display: 'inline-block',
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  background: connected === null ? '#888' : connected ? '#4caf50' : '#f44336',
+                  border: '2px solid #222'
+                }} />
+                <span style={{
+                  color: connected === null ? '#888' : connected ? '#4caf50' : '#f44336',
+                  fontWeight: 'bold'
+                }}>
+                  {connected === null ? 'Unknown' : connected ? 'Connected' : 'Not Connected'}
+                </span>
+              </div>
+              <button
+                onClick={fetchSpoolmanInfo}
+                style={{
+                  backgroundColor: '#2d2d2d',
+                  border: '1px solid #444',
+                  color: '#fff',
+                  padding: '8px 16px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  marginTop: '12px',
+                  width: '100%'
+                }}
+              >
+                Show Spoolman Info
+              </button>
+            </div>
+
+            {/* Configuration Form - Now includes both URL and Flow Compensation */}
+            <div style={{
+              padding: '16px',
+              backgroundColor: '#232323',
+              borderRadius: '8px',
+              border: '1px solid #444'
+            }}>
+              <h3 style={{ color: '#ff9800', marginBottom: '12px', fontSize: '16px' }}>Configuration</h3>
+              <form onSubmit={handleConfig} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <label style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ marginBottom: '4px' }}>Spoolman URL:</span>
+                  <input
+                    type="text"
+                    value={spoolmanUrl}
+                    onChange={e => setSpoolmanUrl(e.target.value)}
+                    placeholder="e.g. http://192.168.0.15:7912"
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#1e1e1e',
+                      color: '#fff',
+                      border: '1px solid #444',
+                      borderRadius: '4px',
+                      padding: '8px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </label>
+
+                <label style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ marginBottom: '4px' }}>Flow Compensation (grams):</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    step="0.1"
+                    value={flowCompensationValue}
+                    onChange={e => setFlowCompensationValue(parseFloat(e.target.value) || 0)}
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#1e1e1e',
+                      color: '#fff',
+                      border: '1px solid #444',
+                      borderRadius: '4px',
+                      padding: '8px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <small style={{ color: '#999', fontSize: '12px', marginTop: '4px' }}>
+                    Fixed amount in grams added to actual usage to compensate for flow variations
+                  </small>
+                </label>
+
                 <button
-                  onClick={fetchSpoolmanInfo}
+                  type="submit"
                   style={{
-                    backgroundColor: '#2d2d2d',
-                    border: '1px solid #444',
-                    color: '#fff',
+                    backgroundColor: '#4caf50',
+                    border: 'none',
+                    color: '#000',
                     padding: '8px 16px',
                     borderRadius: '4px',
                     cursor: 'pointer',
-                    marginTop: '12px',
-                    width: '100%'
+                    fontWeight: 'bold'
                   }}
                 >
-                  Show Spoolman Info
+                  Save Configuration
                 </button>
-              </div>
-
-              {/* Configuration Form - Now includes both URL and Flow Compensation */}
-              <div style={{
-                padding: '16px',
-                backgroundColor: '#232323',
-                borderRadius: '8px',
-                border: '1px solid #444'
-              }}>
-                <h3 style={{ color: '#ff9800', marginBottom: '12px', fontSize: '16px' }}>Configuration</h3>
-                <form onSubmit={handleConfig} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ marginBottom: '4px' }}>Spoolman URL:</span>
-                    <input
-                      type="text"
-                      value={spoolmanUrl}
-                      onChange={e => setSpoolmanUrl(e.target.value)}
-                      placeholder="e.g. http://192.168.0.15:7912"
-                      style={{
-                        width: '100%',
-                        backgroundColor: '#1e1e1e',
-                        color: '#fff',
-                        border: '1px solid #444',
-                        borderRadius: '4px',
-                        padding: '8px',
-                        boxSizing: 'border-box'
-                      }}
-                    />
-                  </label>
-
-                  <label style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ marginBottom: '4px' }}>Flow Compensation (grams):</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="20"
-                      step="0.1"
-                      value={flowCompensationValue}
-                      onChange={e => setFlowCompensationValue(parseFloat(e.target.value) || 0)}
-                      style={{
-                        width: '100%',
-                        backgroundColor: '#1e1e1e',
-                        color: '#fff',
-                        border: '1px solid #444',
-                        borderRadius: '4px',
-                        padding: '8px',
-                        boxSizing: 'border-box'
-                      }}
-                    />
-                    <small style={{ color: '#999', fontSize: '12px', marginTop: '4px' }}>
-                      Fixed amount in grams added to actual usage to compensate for flow variations
-                    </small>
-                  </label>
-
-                  <button
-                    type="submit"
-                    style={{
-                      backgroundColor: '#4caf50',
-                      border: 'none',
-                      color: '#000',
-                      padding: '8px 16px',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontWeight: 'bold'
-                    }}
-                  >
-                    Save Configuration
-                  </button>
-                </form>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Info Modal */}
-        {infoModalOpen && (
-          <div className="modal-overlay" onClick={() => setInfoModalOpen(false)}>
-            <div className="modal" onClick={e => e.stopPropagation()}>
-              <h2>Spoolman Info</h2>
-              {infoError ? (
-                <div className="error">{infoError}</div>
-              ) : (
-                <pre>{JSON.stringify(spoolmanInfo, null, 2)}</pre>
-              )}
-              <button onClick={() => setInfoModalOpen(false)}>Close</button>
+              </form>
             </div>
-          </div>
+          </>
         )}
       </div>
 
-      );
+      {/* Info Modal */}
+      {infoModalOpen && (
+        <div className="modal-overlay" onClick={() => setInfoModalOpen(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Spoolman Info</h2>
+            {infoError ? (
+              <div className="error">{infoError}</div>
+            ) : (
+              <pre>{JSON.stringify(spoolmanInfo, null, 2)}</pre>
+            )}
+            <button onClick={() => setInfoModalOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+
+  );
 
 }
 
-      export default App;
+export default App;

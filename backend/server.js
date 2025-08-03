@@ -63,7 +63,7 @@ function loadSettingsFromDb() {
       console.error('Error loading Spoolman URL from DB:', err.message);
     }
   });
-  
+
   // Load Flow Compensation Value
   db.get('SELECT value FROM settings WHERE key = ?', ['flowCompensationValue'], (err, row) => {
     if (!err && row) {
@@ -252,8 +252,6 @@ app.get('/api/usage/:spoolId', async (req, res) => {
   }
 });
 
-// Add this new endpoint to server.js after the existing /api/usage/:spoolId endpoint
-
 app.get('/api/usage', async (req, res) => {
   try {
     const query = `
@@ -265,25 +263,34 @@ app.get('/api/usage', async (req, res) => {
         usage.note
       FROM usage 
       ORDER BY usage.used_at DESC`;
-    
+
     db.all(query, [], async (err, rows) => {
       if (err) {
         return res.status(500).json({ error: err.message });
       }
-      
+
       try {
         // Get spool details for each usage record
-        const spoolsResponse = await axios.get(`${getSpoolmanApiUrl()}/spool/`);
-        const spools = spoolsResponse.data.results || [];
+        const spoolsResponse = await axios.get(`${getSpoolmanApiUrl()}/spool/`, {
+          params: {
+            allow_archived: true
+          }
+        });
+        const spools = Array.isArray(spoolsResponse.data) ? spoolsResponse.data : spoolsResponse.data.results || [];
         const spoolsMap = {};
         spools.forEach(spool => {
-          spoolsMap[spool.id] = spool;
+          spoolsMap[spool.id.toString()] = spool; // Convert to string to match usage.spool_id
         });
-
+        /*
+                console.log('Available spool IDs:', Object.keys(spoolsMap));
+                console.log('Usage record spool_ids:', rows.map(r => r.spool_id));
+                console.log('Spools from API:', spools.length, 'spools found');
+                console.log('First spool:', spools[0]);
+        */
         // Combine usage data with spool information
         const usageWithSpoolInfo = rows.map(row => {
-          const spool = spoolsMap[row.spool_id];
-          const cost = (spool?.filament?.price && spool?.initial_weight) 
+          const spool = spoolsMap[row.spool_id.toString()];
+          const cost = (spool?.filament?.price && spool?.initial_weight)
             ? ((row.weight / spool.initial_weight) * spool.filament.price).toFixed(2)
             : null;
 
@@ -292,14 +299,15 @@ app.get('/api/usage', async (req, res) => {
             date: row.date,
             weight: row.weight,
             note: row.note,
+            cost: cost,
             spool: {
               id: row.spool_id,
               name: spool?.filament?.name || 'Unknown',
               vendor: spool?.filament?.vendor?.name || 'Unknown',
               color_hex: spool?.filament?.color_hex,
-              price: spool?.filament?.price
-            },
-            cost: cost
+              price: spool?.filament?.price,
+              initial_weight: spool?.initial_weight
+            }
           };
         });
 
@@ -315,7 +323,8 @@ app.get('/api/usage', async (req, res) => {
           spool: {
             id: row.spool_id,
             name: 'Unknown',
-            vendor: 'Unknown'
+            vendor: 'Unknown',
+            color_hex: null
           },
           cost: null
         }));
