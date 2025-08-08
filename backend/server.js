@@ -12,14 +12,8 @@ app.use(cors());
 app.get('/api/info', async (req, res) => {
   try {
     const response = await axios.get(`${getSpoolmanApiUrl()}/info/`);
-    // Always return { results: [...] } for frontend compatibility
-    if (Array.isArray(response.data)) {
-      res.json({ results: response.data });
-    } else if (Array.isArray(response.data.results)) {
-      res.json({ results: response.data.results });
-    } else {
-      res.json({ results: [] });
-    }
+    // Just return the raw response data for info endpoint
+    res.json(response.data);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch Spoolman info', details: err.message });
   }

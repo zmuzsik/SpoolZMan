@@ -745,21 +745,41 @@ function App() {
               <form onSubmit={handleConfig} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <label style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ marginBottom: '4px' }}>Spoolman URL:</span>
-                  <input
-                    type="text"
-                    value={spoolmanUrl}
-                    onChange={e => setSpoolmanUrl(e.target.value)}
-                    placeholder="e.g. http://192.168.0.15:7912"
-                    style={{
-                      width: '100%',
-                      backgroundColor: '#1e1e1e',
-                      color: '#fff',
-                      border: '1px solid #444',
-                      borderRadius: '4px',
-                      padding: '8px',
-                      boxSizing: 'border-box'
-                    }}
-                  />
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'stretch' }}>
+                    <input
+                      type="text"
+                      value={spoolmanUrl}
+                      onChange={e => setSpoolmanUrl(e.target.value)}
+                      placeholder="e.g. http://192.168.0.15:7912"
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#1e1e1e',
+                        color: '#fff',
+                        border: '1px solid #444',
+                        borderRadius: '4px',
+                        padding: '8px',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => window.open(spoolmanUrl, '_blank')}
+                      disabled={!spoolmanUrl}
+                      style={{
+                        backgroundColor: spoolmanUrl ? '#ff9800' : '#666',
+                        border: '1px solid #444',
+                        color: '#fff',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        cursor: spoolmanUrl ? 'pointer' : 'not-allowed',
+                        fontSize: '12px',
+                        whiteSpace: 'nowrap',
+                        boxSizing: 'border-box'
+                      }}
+                    >
+                      Open
+                    </button>
+                  </div>
                 </label>
 
                 <label style={{ display: 'flex', flexDirection: 'column' }}>
