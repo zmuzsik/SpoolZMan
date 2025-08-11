@@ -299,6 +299,8 @@ app.get('/api/usage', async (req, res) => {
               name: spool?.filament?.name || 'Unknown',
               vendor: spool?.filament?.vendor?.name || 'Unknown',
               color_hex: spool?.filament?.color_hex,
+              multi_color_hexes: spool?.filament?.multi_color_hexes,
+              multi_color_direction: spool?.filament?.multi_color_direction,
               price: spool?.filament?.price,
               initial_weight: spool?.initial_weight
             }
@@ -318,7 +320,9 @@ app.get('/api/usage', async (req, res) => {
             id: row.spool_id,
             name: 'Unknown',
             vendor: 'Unknown',
-            color_hex: null
+            color_hex: null,
+            multi_color_hexes: null,
+            multi_color_direction: null
           },
           cost: null
         }));

@@ -318,7 +318,7 @@ function App() {
                           }
                         }}
                       >
-                        {spool.filament?.color_hex && (
+                        {spool.filament?.color_hex ? (
                           <span style={{
                             display: 'inline-block',
                             width: '12px',
@@ -327,7 +327,16 @@ function App() {
                             backgroundColor: `#${spool.filament.color_hex}`,
                             border: '1px solid #666'
                           }} />
-                        )}
+                        ) : spool.filament?.multi_color_hexes ? (
+                          <span style={{
+                            display: 'inline-block',
+                            width: '12px',
+                            height: '12px',
+                            borderRadius: '50%',
+                            background: `linear-gradient(${spool.filament.multi_color_direction === 'longitudinal' ? '0deg' : '90deg'}, ${spool.filament.multi_color_hexes.split(',').map(color => `#${color.trim()}`).join(', ')})`,
+                            border: '1px solid #666'
+                          }} />
+                        ) : null}
                         {spool.filament?.name || spool.id}
                       </div>
                     ))}
@@ -475,7 +484,7 @@ function App() {
                           onClick={() => handleSpoolClick(spool)}
                         >
                           <td style={{ padding: '8px' }}>
-                            {spool.filament?.color_hex && (
+                            {spool.filament?.color_hex ? (
                               <span style={{
                                 display: 'inline-block',
                                 width: '16px',
@@ -484,7 +493,16 @@ function App() {
                                 backgroundColor: `#${spool.filament.color_hex}`,
                                 border: '1px solid #666'
                               }} />
-                            )}
+                            ) : spool.filament?.multi_color_hexes ? (
+                              <span style={{
+                                display: 'inline-block',
+                                width: '16px',
+                                height: '16px',
+                                borderRadius: '50%',
+                                background: `linear-gradient(${spool.filament.multi_color_direction === 'longitudinal' ? '0deg' : '90deg'}, ${spool.filament.multi_color_hexes.split(',').map(color => `#${color.trim()}`).join(', ')})`,
+                                border: '1px solid #666'
+                              }} />
+                            ) : null}
                           </td>
                           <td style={{ padding: '8px' }}>{spool.filament?.name || 'Unknown'}</td>
                           <td style={{ padding: '8px' }}>{spool.filament?.vendor?.name || 'Unknown'}</td>
@@ -531,7 +549,7 @@ function App() {
                           {new Date(usage.date).toLocaleDateString("en-SG")}
                         </td>
                         <td style={{ padding: '8px' }}>
-                          {usage.spool?.color_hex && (
+                          {usage.spool?.color_hex ? (
                             <span style={{
                               display: 'inline-block',
                               width: '16px',
@@ -540,7 +558,16 @@ function App() {
                               backgroundColor: `#${usage.spool.color_hex}`,
                               border: '1px solid #666'
                             }} />
-                          )}
+                          ) : usage.spool?.multi_color_hexes ? (
+                            <span style={{
+                              display: 'inline-block',
+                              width: '16px',
+                              height: '16px',
+                              borderRadius: '50%',
+                              background: `linear-gradient(${usage.spool.multi_color_direction === 'longitudinal' ? '0deg' : '90deg'}, ${usage.spool.multi_color_hexes.split(',').map(color => `#${color.trim()}`).join(', ')})`,
+                              border: '1px solid #666'
+                            }} />
+                          ) : null}
                         </td>
                         <td style={{ padding: '8px' }}>{usage.spool?.name || 'Unknown'}</td>
                         <td style={{ padding: '8px' }}>{usage.spool?.vendor || 'Unknown'}</td>
@@ -592,7 +619,7 @@ function App() {
 
                 <div style={{ marginBottom: '16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    {selectedSpoolForUsage.filament?.color_hex && (
+                    {selectedSpoolForUsage.filament?.color_hex ? (
                       <span style={{
                         display: 'inline-block',
                         width: '16px',
@@ -601,7 +628,16 @@ function App() {
                         backgroundColor: `#${selectedSpoolForUsage.filament.color_hex}`,
                         border: '1px solid #666'
                       }} />
-                    )}
+                    ) : selectedSpoolForUsage.filament?.multi_color_hexes ? (
+                      <span style={{
+                        display: 'inline-block',
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        background: `linear-gradient(${selectedSpoolForUsage.filament.multi_color_direction === 'longitudinal' ? '0deg' : '90deg'}, ${selectedSpoolForUsage.filament.multi_color_hexes.split(',').map(color => `#${color.trim()}`).join(', ')})`,
+                        border: '1px solid #666'
+                      }} />
+                    ) : null}
                     <strong>{selectedSpoolForUsage.filament?.name || 'Unknown'}</strong>
                   </div>
                   <div style={{ fontSize: '14px', color: '#999' }}>
