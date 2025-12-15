@@ -206,11 +206,14 @@ app.post('/api/usage', async (req, res) => {
     // Calculate new remaining weight: current remaining - weight used
     const newRemainingWeight = currentSpool.remaining_weight - parseFloat(weight);
 
+    // Update Spoolman - if weight would go negative, set to 0
+    const spoolmanWeight = Math.max(0, newRemainingWeight);
+
     console.log(`Current remaining: ${currentSpool.remaining_weight}g, Used: ${weight}g, New remaining: ${newRemainingWeight}g`);
 
     // Update Spoolman with the new remaining weight
     await axios.patch(`${getSpoolmanApiUrl()}/spool/${spool_id}`, {
-      remaining_weight: newRemainingWeight,
+      remaining_weight: spoolmanWeight,
       last_used: used_at
     });
 
@@ -223,7 +226,10 @@ app.post('/api/usage', async (req, res) => {
           console.error('Error saving to local DB:', err);
           return res.status(500).json({ error: 'Failed to save to local DB' });
         }
-        res.json({ success: true });
+        res.json({
+          success: true,
+          wasEmptied: newRemainingWeight < 0
+        });
       }
     );
   } catch (err) {
@@ -348,6 +354,14 @@ app.get('/api/remaining', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch remaining filament' });
   }
+});
+
+// Serve static frontend files from the correct build output
+app.use(express.static(path.join(__dirname, 'frontend', 'dist')));
+
+// Fallback for SPA routing
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend', 'dist', 'index.html'));
 });
 
 const PORT = process.env.PORT || 4000;

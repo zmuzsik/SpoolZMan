@@ -17,7 +17,7 @@ function App() {
   const [infoError, setInfoError] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [flowCompensation, setFlowCompensation] = useState(true); // checkbox state
+  const [flowCompensation, setFlowCompensation] = useState(false); // checkbox state
   const [flowCompensationValue, setFlowCompensationValue] = useState(1.5); // default 1.5g
 
   // New state for right panel and usage tracking
@@ -171,7 +171,13 @@ function App() {
           const compensationText = flowCompensation
             ? ` (${baseWeight}g + ${flowCompensationValue}g compensation = ${finalWeight}g total)`
             : '';
-          setMessage(`Usage registered!${compensationText}`);
+          // Check if the backend indicates the spool was emptied
+          const wasEmptied = data.wasEmptied || false;
+          const message = wasEmptied
+            ? `Usage registered! Spool marked as empty.${compensationText}`
+            : `Usage registered!${compensationText}`;
+
+          setMessage(message);
           setGramsUsed('');
           setNote('');
           setSelectedSpool('');
