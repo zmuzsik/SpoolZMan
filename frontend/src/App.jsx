@@ -678,9 +678,12 @@ function App() {
                             <div style={{ fontSize: '12px', color: '#ccc', marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ fontStyle: 'italic' }}>{usage.note}
                               </span>
-                              <span style={{ fontStyle: 'italic' }}>Cost:  ${(selectedSpoolForUsage.filament?.price && selectedSpoolForUsage.initial_weight) ?
-                                ((usage.weight / selectedSpoolForUsage.initial_weight) * selectedSpoolForUsage.filament.price).toFixed(2) :
-                                'N/A'}
+                              <span style={{ fontStyle: 'italic' }}>Cost:  ${(() => {
+                                const spoolPrice = selectedSpoolForUsage.price ?? selectedSpoolForUsage.filament?.price;
+                                return (spoolPrice && selectedSpoolForUsage.initial_weight) ?
+                                  ((usage.weight / selectedSpoolForUsage.initial_weight) * spoolPrice).toFixed(2) :
+                                  'N/A';
+                              })()}
                               </span>
                             </div>
                           )}

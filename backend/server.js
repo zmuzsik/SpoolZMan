@@ -290,8 +290,9 @@ app.get('/api/usage', async (req, res) => {
         // Combine usage data with spool information
         const usageWithSpoolInfo = rows.map(row => {
           const spool = spoolsMap[row.spool_id.toString()];
-          const cost = (spool?.filament?.price && spool?.initial_weight)
-            ? ((row.weight / spool.initial_weight) * spool.filament.price).toFixed(2)
+          const spoolPrice = spool?.price ?? spool?.filament?.price;
+          const cost = (spoolPrice && spool?.initial_weight)
+            ? ((row.weight / spool.initial_weight) * spoolPrice).toFixed(2)
             : null;
 
           return {
@@ -307,7 +308,8 @@ app.get('/api/usage', async (req, res) => {
               color_hex: spool?.filament?.color_hex,
               multi_color_hexes: spool?.filament?.multi_color_hexes,
               multi_color_direction: spool?.filament?.multi_color_direction,
-              price: spool?.filament?.price,
+              // price: spool?.filament?.price,
+              price: spoolPrice,
               initial_weight: spool?.initial_weight
             }
           };
