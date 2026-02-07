@@ -20,6 +20,15 @@ function App() {
   const [flowCompensation, setFlowCompensation] = useState(false); // checkbox state
   const [flowCompensationValue, setFlowCompensationValue] = useState(1.5); // default 1.5g
 
+  // Multi-filament entry state
+  const [filamentEntries, setFilamentEntries] = useState([
+    { id: Date.now(), spoolId: '', weight: '', dropdownOpen: false }
+  ]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Print job grouping state
+  const [expandedJobs, setExpandedJobs] = useState(new Set());
+
   // New state for right panel and usage tracking
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [selectedSpoolForUsage, setSelectedSpoolForUsage] = useState(null);
@@ -145,58 +154,147 @@ function App() {
       });
   };
 
-  const handleUsage = (e) => {
+  // Helper functions for multi-filament entry
+  const addFilamentEntry = () => {
+    setFilamentEntries([...filamentEntries, { id: Date.now(), spoolId: '', weight: '', dropdownOpen: false }]);
+  };
+
+  const removeFilamentEntry = (id) => {
+    if (filamentEntries.length > 1) {
+      setFilamentEntries(filamentEntries.filter(entry => entry.id !== id));
+    }
+  };
+
+  const updateFilamentEntry = (id, field, value) => {
+    setFilamentEntries(filamentEntries.map(entry =>
+      entry.id === id ? { ...entry, [field]: value } : entry
+    ));
+  };
+
+  const toggleDropdown = (id) => {
+    setFilamentEntries(filamentEntries.map(entry =>
+      entry.id === id ? { ...entry, dropdownOpen: !entry.dropdownOpen } : { ...entry, dropdownOpen: false }
+    ));
+  };
+
+  const selectSpool = (entryId, spoolId) => {
+    setFilamentEntries(filamentEntries.map(entry =>
+      entry.id === entryId ? { ...entry, spoolId: spoolId.toString(), dropdownOpen: false } : entry
+    ));
+  };
+
+  const handleUsage = async (e) => {
     e.preventDefault();
-    if (!selectedSpool || !gramsUsed) return;
+    
+    // Validate that we have at least one valid entry
+    const validEntries = filamentEntries.filter(entry => entry.spoolId && entry.weight);
+    if (validEntries.length === 0) {
+      setMessage('Please add at least one filament with spool and weight');
+      return;
+    }
 
-    // Calculate final weight with flow compensation if enabled
-    const baseWeight = parseFloat(gramsUsed);
-    const finalWeight = parseFloat(flowCompensation ? baseWeight + flowCompensationValue : baseWeight).toFixed(1);
+    setIsSubmitting(true);
+    const results = {
+      succeeded: [],
+      failed: [],
+      emptied: []
+    };
 
-    fetch(`/api/usage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        spool_id: selectedSpool,
-        weight: finalWeight,
-        note: note
-      })
-    })
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to register usage');
-        return res.json();
-      })
-      .then(data => {
-        if (data.success) {
-          const compensationText = flowCompensation
-            ? ` (${baseWeight}g + ${flowCompensationValue}g compensation = ${finalWeight}g total)`
-            : '';
-          // Check if the backend indicates the spool was emptied
-          const wasEmptied = data.wasEmptied || false;
-          const message = wasEmptied
-            ? `Usage registered! Spool marked as empty.${compensationText}`
-            : `Usage registered!${compensationText}`;
+    try {
+      // Submit each filament entry sequentially
+      for (const entry of validEntries) {
+        const baseWeight = parseFloat(entry.weight);
+        const finalWeight = parseFloat(
+          flowCompensation ? baseWeight + flowCompensationValue : baseWeight
+        ).toFixed(1);
 
-          setMessage(message);
-          setGramsUsed('');
-          setNote('');
-          setSelectedSpool('');
-          setRefreshTrigger(prev => prev + 1);
-          if (selectedSpoolForUsage) {
-            fetchUsageHistory(selectedSpoolForUsage.id);
+        const spool = spools.find(s => s.id === parseInt(entry.spoolId));
+        const spoolName = spool?.filament?.name || `Spool ${entry.spoolId}`;
+
+        try {
+          const res = await fetch(`/api/usage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              spool_id: entry.spoolId,
+              weight: finalWeight,
+              note: note
+            })
+          });
+
+          if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || 'Failed to register usage');
           }
-          // Refresh all usage history if we're on the history view
-          if (currentView === 'history') {
-            fetchAllUsageHistory();
+
+          const data = await res.json();
+          
+          if (data.success) {
+            results.succeeded.push({
+              name: spoolName,
+              weight: finalWeight,
+              baseWeight: baseWeight
+            });
+            
+            if (data.wasEmptied) {
+              results.emptied.push(spoolName);
+            }
+          } else {
+            results.failed.push({
+              name: spoolName,
+              error: data.error || 'Unknown error'
+            });
           }
-        } else {
-          setMessage(data.error || 'Error registering usage');
+        } catch (err) {
+          results.failed.push({
+            name: spoolName,
+            error: err.message
+          });
         }
-      })
-      .catch(err => {
-        setMessage('Error registering usage: ' + err.message);
-        console.error('Usage POST error:', err);
-      });
+      }
+
+      // Build detailed message
+      let messageLines = [];
+      
+      if (results.succeeded.length > 0) {
+        const totalWeight = results.succeeded.reduce((sum, r) => sum + parseFloat(r.weight), 0);
+        const compensationText = flowCompensation 
+          ? ` (includes ${flowCompensationValue}g/filament compensation)`
+          : '';
+        messageLines.push(`✓ Successfully recorded ${results.succeeded.length} filament(s) - Total: ${totalWeight.toFixed(1)}g${compensationText}`);
+        
+        if (results.emptied.length > 0) {
+          messageLines.push(`⚠ Spool(s) emptied: ${results.emptied.join(', ')}`);
+        }
+      }
+      
+      if (results.failed.length > 0) {
+        messageLines.push(`✗ Failed to record ${results.failed.length} filament(s):`);
+        results.failed.forEach(f => {
+          messageLines.push(`  • ${f.name}: ${f.error}`);
+        });
+      }
+
+      setMessage(messageLines.join('\n'));
+
+      // Reset form if all succeeded
+      if (results.failed.length === 0) {
+        setNote('');
+        setFilamentEntries([{ id: Date.now(), spoolId: '', weight: '', dropdownOpen: false }]);
+        setRefreshTrigger(prev => prev + 1);
+        if (selectedSpoolForUsage) {
+          fetchUsageHistory(selectedSpoolForUsage.id);
+        }
+        if (currentView === 'history') {
+          fetchAllUsageHistory();
+        }
+      }
+
+    } catch (err) {
+      setMessage(`Error: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   const fetchSpoolmanInfo = async () => {
     setInfoError(null);
@@ -235,6 +333,55 @@ function App() {
 
   const rightPanelWidth = rightPanelCollapsed ? '50px' : '280px';
 
+  // Group usage history by print job (same hour + note)
+  const groupPrintJobs = (usageHistory) => {
+    if (usageHistory.length === 0) return [];
+    
+    const groups = {};
+    
+    usageHistory.forEach(usage => {
+      const date = new Date(usage.date);
+      // Create key: year-month-day-hour + note
+      const hourKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}-${date.getHours()}`;
+      const note = usage.note || '';
+      const groupKey = `${hourKey}|${note}`;
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          jobKey: groupKey,
+          date: usage.date,
+          note: note,
+          entries: [],
+          totalWeight: 0,
+          totalCost: 0
+        };
+      }
+      
+      groups[groupKey].entries.push(usage);
+      groups[groupKey].totalWeight += parseFloat(usage.weight) || 0;
+      groups[groupKey].totalCost += parseFloat(usage.cost) || 0;
+    });
+    
+    // Convert to array and sort by date descending
+    return Object.values(groups).sort((a, b) => 
+      new Date(b.date) - new Date(a.date)
+    );
+  };
+
+  const toggleJobExpansion = (jobKey) => {
+    setExpandedJobs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(jobKey)) {
+        newSet.delete(jobKey);
+      } else {
+        newSet.add(jobKey);
+      }
+      return newSet;
+    });
+  };
+
+  const groupedJobs = groupPrintJobs(allUsageHistory);
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', gap: '0', width: '100%' }}>
       {/* Main Content Area - Now takes more space */}
@@ -242,179 +389,329 @@ function App() {
         <div className="container" style={{ width: '100%', padding: '0' }}>
           <h1>Spoolman Filament Usage</h1>
 
-          <form onSubmit={handleUsage} className="usage-form" style={{
-            display: 'flex',
-            gap: '16px',
-            alignItems: 'flex-end',
+          <div style={{
             marginBottom: '24px',
-            padding: '16px',
+            padding: '20px',
             backgroundColor: '#1e1e1e',
             borderRadius: '8px',
-            border: '1px solid #444',
-            width: '100%',
-            boxSizing: 'border-box'
+            border: '1px solid #444'
           }}>
-            <label style={{ flex: 1 }}>
-              Select Spool:
-              <div className="custom-select" style={{ position: 'relative', marginTop: '8px' }}>
-                <div
-                  onClick={() => setDropdownOpen(!dropdownOpen)}
+            <h2 style={{ marginTop: 0, marginBottom: '20px', fontSize: '18px', color: '#ff9800' }}>Record Print Job</h2>
+            
+            <form onSubmit={handleUsage}>
+              {/* Print Job Note */}
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: '#b0b0b0' }}>
+                  Print Job Note
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Dynamic Red Packet: Taking the Lead"
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
                   style={{
-                    minWidth: '300px',
-                    maxWidth: '80%',
-                    padding: '5px 10px',
-                    border: '1px solid #444',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    backgroundColor: '#1e1e1e',
+                    width: '100%',
+                    backgroundColor: '#2a2a2a',
                     color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}
-                >
-                  {selectedSpool ? (
-                    <>
-                      {spools.find(s => s.id === parseInt(selectedSpool))?.filament?.color_hex && (
-                        <span style={{
-                          display: 'inline-block',
-                          width: '12px',
-                          height: '12px',
-                          borderRadius: '50%',
-                          backgroundColor: `#${spools.find(s => s.id === parseInt(selectedSpool))?.filament?.color_hex}`,
-                          border: '1px solid #666'
-                        }} />
-                      )}
-                      {spools.find(s => s.id === parseInt(selectedSpool))?.filament?.name || selectedSpool}
-                    </>
-                  ) : '--Choose--'}
-                </div>
-                {dropdownOpen && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    maxHeight: '450px',
-                    overflowY: 'auto',
-                    backgroundColor: '#1e1e1e',
                     border: '1px solid #444',
-                    borderRadius: '4px',
-                    marginTop: '2px',
-                    zIndex: 1000,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-                  }}>
-                    {spools.map(spool => (
-                      <div
-                        key={spool.id}
-                        onClick={() => {
-                          setSelectedSpool(spool.id.toString());
-                          setDropdownOpen(false);
-                        }}
+                    borderRadius: '6px',
+                    padding: '10px 12px',
+                    fontSize: '14px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              {/* Filaments Section */}
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '16px', marginBottom: '16px', color: '#fff' }}>Filaments Used</h3>
+                
+                {filamentEntries.map((entry, index) => {
+                  const selectedSpool = entry.spoolId ? spools.find(s => s.id === parseInt(entry.spoolId)) : null;
+                  
+                  return (
+                    <div key={entry.id} style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 140px 40px',
+                      gap: '12px',
+                      marginBottom: '12px',
+                      padding: '12px',
+                      backgroundColor: '#2a2a2a',
+                      borderRadius: '8px',
+                      border: '1px solid #3a3a3a'
+                    }}>
+                      {/* Custom Spool Dropdown */}
+                      <div style={{ position: 'relative' }}>
+                        <div
+                          onClick={() => toggleDropdown(entry.id)}
+                          style={{
+                            padding: '10px 12px',
+                            backgroundColor: '#1e1e1e',
+                            border: '1px solid #444',
+                            borderRadius: '6px',
+                            color: '#e0e0e0',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}
+                        >
+                          {selectedSpool ? (
+                            <>
+                              {selectedSpool.filament?.color_hex ? (
+                                <span style={{
+                                  display: 'inline-block',
+                                  width: '12px',
+                                  height: '12px',
+                                  borderRadius: '50%',
+                                  backgroundColor: `#${selectedSpool.filament.color_hex}`,
+                                  border: '1px solid #666',
+                                  flexShrink: 0
+                                }} />
+                              ) : selectedSpool.filament?.multi_color_hexes ? (
+                                <span style={{
+                                  display: 'inline-block',
+                                  width: '12px',
+                                  height: '12px',
+                                  borderRadius: '50%',
+                                  background: `linear-gradient(${selectedSpool.filament.multi_color_direction === 'longitudinal' ? '0deg' : '90deg'}, ${selectedSpool.filament.multi_color_hexes.split(',').map(color => `#${color.trim()}`).join(', ')})`,
+                                  border: '1px solid #666',
+                                  flexShrink: 0
+                                }} />
+                              ) : null}
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {selectedSpool.filament?.name || selectedSpool.id}
+                              </span>
+                            </>
+                          ) : (
+                            <span>Select filament...</span>
+                          )}
+                        </div>
+                        
+                        {entry.dropdownOpen && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            maxHeight: '300px',
+                            overflowY: 'auto',
+                            backgroundColor: '#1e1e1e',
+                            border: '1px solid #444',
+                            borderRadius: '6px',
+                            marginTop: '4px',
+                            zIndex: 1000,
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                          }}>
+                            {spools.map(spool => (
+                              <div
+                                key={spool.id}
+                                onClick={() => selectSpool(entry.id, spool.id)}
+                                style={{
+                                  padding: '8px 12px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  backgroundColor: parseInt(entry.spoolId) === spool.id ? '#2d2d2d' : '#1e1e1e'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#2d2d2d'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = parseInt(entry.spoolId) === spool.id ? '#2d2d2d' : '#1e1e1e'}
+                              >
+                                {spool.filament?.color_hex ? (
+                                  <span style={{
+                                    display: 'inline-block',
+                                    width: '12px',
+                                    height: '12px',
+                                    borderRadius: '50%',
+                                    backgroundColor: `#${spool.filament.color_hex}`,
+                                    border: '1px solid #666',
+                                    flexShrink: 0
+                                  }} />
+                                ) : spool.filament?.multi_color_hexes ? (
+                                  <span style={{
+                                    display: 'inline-block',
+                                    width: '12px',
+                                    height: '12px',
+                                    borderRadius: '50%',
+                                    background: `linear-gradient(${spool.filament.multi_color_direction === 'longitudinal' ? '0deg' : '90deg'}, ${spool.filament.multi_color_hexes.split(',').map(color => `#${color.trim()}`).join(', ')})`,
+                                    border: '1px solid #666',
+                                    flexShrink: 0
+                                  }} />
+                                ) : null}
+                                <span>{spool.filament?.name || spool.id}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Weight Input */}
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          placeholder="0.0"
+                          value={entry.weight}
+                          onChange={e => updateFilamentEntry(entry.id, 'weight', e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '10px 30px 10px 12px',
+                            backgroundColor: '#1e1e1e',
+                            border: '1px solid #444',
+                            borderRadius: '6px',
+                            color: '#e0e0e0',
+                            fontSize: '14px',
+                            textAlign: 'right',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                        <span style={{
+                          position: 'absolute',
+                          right: '12px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          color: '#666',
+                          pointerEvents: 'none',
+                          fontSize: '14px'
+                        }}>g</span>
+                      </div>
+
+                      {/* Remove Button */}
+                      <button
+                        type="button"
+                        onClick={() => removeFilamentEntry(entry.id)}
+                        disabled={filamentEntries.length === 1}
+                        title="Remove"
                         style={{
-                          padding: '8px 10px',
-                          cursor: 'pointer',
+                          background: 'transparent',
+                          color: filamentEntries.length === 1 ? '#444' : '#ff6b6b',
+                          border: '1px solid #444',
+                          borderRadius: '6px',
+                          width: '40px',
+                          height: '40px',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '8px',
-                          backgroundColor: parseInt(selectedSpool) === spool.id ? '#2d2d2d' : '#1e1e1e',
-                          color: '#fff',
-                          ':hover': {
-                            backgroundColor: '#2d2d2d'
-                          }
+                          justifyContent: 'center',
+                          cursor: filamentEntries.length === 1 ? 'not-allowed' : 'pointer',
+                          fontSize: '20px',
+                          fontWeight: 'bold'
                         }}
                       >
-                        {spool.filament?.color_hex ? (
-                          <span style={{
-                            display: 'inline-block',
-                            width: '12px',
-                            height: '12px',
-                            borderRadius: '50%',
-                            backgroundColor: `#${spool.filament.color_hex}`,
-                            border: '1px solid #666'
-                          }} />
-                        ) : spool.filament?.multi_color_hexes ? (
-                          <span style={{
-                            display: 'inline-block',
-                            width: '12px',
-                            height: '12px',
-                            borderRadius: '50%',
-                            background: `linear-gradient(${spool.filament.multi_color_direction === 'longitudinal' ? '0deg' : '90deg'}, ${spool.filament.multi_color_hexes.split(',').map(color => `#${color.trim()}`).join(', ')})`,
-                            border: '1px solid #666'
-                          }} />
-                        ) : null}
-                        {spool.filament?.name || spool.id}
-                      </div>
-                    ))}
-                  </div>
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* Add Filament Button */}
+                <button
+                  type="button"
+                  onClick={addFilamentEntry}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    background: 'transparent',
+                    color: '#4a9eff',
+                    border: '1px dashed #4a9eff',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    marginBottom: '16px'
+                  }}
+                >
+                  + Add Another Filament
+                </button>
+
+                {/* Flow Compensation */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '12px',
+                  backgroundColor: '#2a2a2a',
+                  borderRadius: '6px'
+                }}>
+                  <input
+                    type="checkbox"
+                    id="flowComp"
+                    checked={flowCompensation}
+                    onChange={e => setFlowCompensation(e.target.checked)}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer',
+                      accentColor: '#ff9800'
+                    }}
+                  />
+                  <label htmlFor="flowComp" style={{
+                    margin: 0,
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    color: '#b0b0b0'
+                  }}>
+                    Add flow compensation ({flowCompensationValue}g per filament)
+                  </label>
+                </div>
+                
+                {/* Total Weight Display */}
+                {flowCompensation && filamentEntries.some(e => e.weight) && (
+                  <p style={{
+                    fontSize: '12px',
+                    color: '#888',
+                    marginTop: '8px',
+                    marginLeft: '12px',
+                    marginBottom: 0
+                  }}>
+                    Total with compensation: {
+                      filamentEntries
+                        .filter(e => e.weight)
+                        .reduce((sum, e) => sum + parseFloat(e.weight) + flowCompensationValue, 0)
+                        .toFixed(1)
+                    }g
+                  </p>
                 )}
               </div>
-            </label>
-            <label style={{ flex: 1, minWidth: '100px', maxWidth: '200px' }}>
-              Grams Used:
-              <input
-                type="number"
-                min="0"
-                step="0.1"
-                value={gramsUsed}
-                onChange={e => setGramsUsed(e.target.value)}
-                style={{
-                  width: '100%',
-                  backgroundColor: '#1e1e1e',
-                  color: '#fff',
-                  border: '1px solid #444',
-                  borderRadius: '4px',
-                  padding: '8px',
-                  marginTop: '8px'
-                }}
-              />
-            </label>
-            <label style={{ flex: 1, minWidth: '150px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                checked={flowCompensation}
-                onChange={e => setFlowCompensation(e.target.checked)}
-                style={{
-                  accentColor: '#ff9800'
-                }}
-              />
-              Flow Compensation (+{flowCompensationValue}g)
-            </label>
-            <label style={{ flex: 1, minWidth: '200px' }}>
-              Note:
-              <input
-                type="text"
-                placeholder="Optional note"
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                style={{
-                  width: '100%',
-                  backgroundColor: '#1e1e1e',
-                  color: '#fff',
-                  border: '1px solid #444',
-                  borderRadius: '4px',
-                  padding: '8px',
-                  marginTop: '8px'
-                }}
-              />
-            </label>
-            <button
-              type="submit"
-              style={{
-                backgroundColor: '#ff9800',
-                border: 'none',
-                color: '#000',
-                padding: '8px 16px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }}
-            >
-              Register Usage
-            </button>
-          </form>
 
-          {message && <p style={{ color: 'green', marginBottom: '24px' }}>{message}</p>}
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  backgroundColor: isSubmitting ? '#3a3a3a' : '#ff9800',
+                  color: isSubmitting ? '#666' : '#000',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '15px',
+                  fontWeight: '600',
+                  cursor: isSubmitting ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isSubmitting ? 'Recording...' : 'Record Usage'}
+              </button>
+            </form>
+          </div>
+
+          {message && (
+            <div style={{
+              marginBottom: '24px',
+              padding: '12px',
+              backgroundColor: message.includes('✗') ? '#3a1f1f' : '#1f3a1f',
+              border: `1px solid ${message.includes('✗') ? '#ff6b6b' : '#4caf50'}`,
+              borderRadius: '6px',
+              whiteSpace: 'pre-line',
+              fontFamily: 'monospace',
+              fontSize: '13px',
+              color: message.includes('✗') ? '#ff9999' : '#90ee90'
+            }}>
+              {message}
+            </div>
+          )}
 
           {/* View Toggle Buttons */}
           <div style={{
@@ -544,53 +841,168 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {allUsageHistory.map(usage => (
-                      <tr
-                        key={usage.id}
-                        style={{
-                          borderTop: '1px solid #444'
-                        }}
-                      >
-                        <td style={{ padding: '8px', fontSize: '14px' }}>
-                          {new Date(usage.date).toLocaleDateString("en-SG")}
-                        </td>
-                        <td style={{ padding: '8px' }}>
-                          {usage.spool?.color_hex ? (
-                            <span style={{
-                              display: 'inline-block',
-                              width: '16px',
-                              height: '16px',
-                              borderRadius: '50%',
-                              backgroundColor: `#${usage.spool.color_hex}`,
-                              border: '1px solid #666'
-                            }} />
-                          ) : usage.spool?.multi_color_hexes ? (
-                            <span style={{
-                              display: 'inline-block',
-                              width: '16px',
-                              height: '16px',
-                              borderRadius: '50%',
-                              background: `linear-gradient(${usage.spool.multi_color_direction === 'longitudinal' ? '0deg' : '90deg'}, ${usage.spool.multi_color_hexes.split(',').map(color => `#${color.trim()}`).join(', ')})`,
-                              border: '1px solid #666'
-                            }} />
-                          ) : null}
-                        </td>
-                        <td style={{ padding: '8px' }}>{usage.spool?.name || 'Unknown'}</td>
-                        <td style={{ padding: '8px' }}>{usage.spool?.vendor || 'Unknown'}</td>
-                        <td style={{ textAlign: 'right', padding: '8px', fontWeight: 'bold', color: '#ff9800' }}>
-                          {usage.weight}
-                        </td>
-                        <td style={{ textAlign: 'right', padding: '8px', color: '#4caf50' }}>
-                          ${usage.cost || 'N/A'}
-                        </td>
-                        <td style={{ padding: '8px', fontSize: '14px', fontStyle: 'italic', color: '#ccc' }}>
-                          {usage.note || '-'}
-                        </td>
-                      </tr>
-                    ))}
+                    {groupedJobs.map(job => {
+                      const isExpanded = expandedJobs.has(job.jobKey);
+                      const isMultiFilament = job.entries.length > 1;
+                      
+                      return (
+                        <React.Fragment key={job.jobKey}>
+                          {/* Main job row */}
+                          <tr
+                            style={{
+                              borderTop: '1px solid #444',
+                              backgroundColor: isExpanded ? '#2a2a2a' : 'transparent',
+                              cursor: isMultiFilament ? 'pointer' : 'default'
+                            }}
+                            onClick={() => isMultiFilament && toggleJobExpansion(job.jobKey)}
+                          >
+                            <td style={{ padding: '8px', fontSize: '14px' }}>
+                              {new Date(job.date).toLocaleDateString("en-SG")}
+                            </td>
+                            <td style={{ padding: '8px' }}>
+                              {isMultiFilament ? (
+                                <div style={{ display: 'flex', gap: '2px' }}>
+                                  {job.entries.slice(0, 5).map((entry, idx) => (
+                                    <span key={idx}>
+                                      {entry.spool?.color_hex ? (
+                                        <span style={{
+                                          display: 'inline-block',
+                                          width: '16px',
+                                          height: '16px',
+                                          borderRadius: '50%',
+                                          backgroundColor: `#${entry.spool.color_hex}`,
+                                          border: '1px solid #666'
+                                        }} />
+                                      ) : entry.spool?.multi_color_hexes ? (
+                                        <span style={{
+                                          display: 'inline-block',
+                                          width: '16px',
+                                          height: '16px',
+                                          borderRadius: '50%',
+                                          background: `linear-gradient(${entry.spool.multi_color_direction === 'longitudinal' ? '0deg' : '90deg'}, ${entry.spool.multi_color_hexes.split(',').map(color => `#${color.trim()}`).join(', ')})`,
+                                          border: '1px solid #666'
+                                        }} />
+                                      ) : null}
+                                    </span>
+                                  ))}
+                                  {job.entries.length > 5 && (
+                                    <span style={{ fontSize: '12px', color: '#999', marginLeft: '4px' }}>
+                                      +{job.entries.length - 5}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                job.entries[0].spool?.color_hex ? (
+                                  <span style={{
+                                    display: 'inline-block',
+                                    width: '16px',
+                                    height: '16px',
+                                    borderRadius: '50%',
+                                    backgroundColor: `#${job.entries[0].spool.color_hex}`,
+                                    border: '1px solid #666'
+                                  }} />
+                                ) : job.entries[0].spool?.multi_color_hexes ? (
+                                  <span style={{
+                                    display: 'inline-block',
+                                    width: '16px',
+                                    height: '16px',
+                                    borderRadius: '50%',
+                                    background: `linear-gradient(${job.entries[0].spool.multi_color_direction === 'longitudinal' ? '0deg' : '90deg'}, ${job.entries[0].spool.multi_color_hexes.split(',').map(color => `#${color.trim()}`).join(', ')})`,
+                                    border: '1px solid #666'
+                                  }} />
+                                ) : null
+                              )}
+                            </td>
+                            <td style={{ padding: '8px' }}>
+                              {isMultiFilament ? (
+                                <span style={{ color: '#999', fontSize: '14px' }}>
+                                  {job.entries.length} filaments
+                                </span>
+                              ) : (
+                                job.entries[0].spool?.name || 'Unknown'
+                              )}
+                            </td>
+                            <td style={{ padding: '8px' }}>
+                              {isMultiFilament ? (
+                                <span style={{ color: '#999', fontSize: '14px' }}>Multiple</span>
+                              ) : (
+                                job.entries[0].spool?.vendor || 'Unknown'
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'right', padding: '8px', fontWeight: 'bold', color: '#ff9800' }}>
+                              {job.totalWeight.toFixed(1)}
+                              {isMultiFilament && (
+                                <span style={{ 
+                                  marginLeft: '8px', 
+                                  fontSize: '12px', 
+                                  color: '#4a9eff' 
+                                }}>
+                                  {isExpanded ? '▼' : '▶'}
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'right', padding: '8px', color: '#4caf50' }}>
+                              ${job.totalCost.toFixed(2)}
+                            </td>
+                            <td style={{ padding: '8px', fontSize: '14px', fontStyle: 'italic', color: '#ccc' }}>
+                              {job.note || '-'}
+                            </td>
+                          </tr>
+                          
+                          {/* Expanded detail rows */}
+                          {isExpanded && job.entries.map((entry, idx) => (
+                            <tr
+                              key={`${job.jobKey}-${idx}`}
+                              style={{
+                                borderTop: '1px solid #333',
+                                backgroundColor: '#252525'
+                              }}
+                            >
+                              <td style={{ padding: '8px 8px 8px 24px', fontSize: '13px', color: '#999' }}>
+                                └─
+                              </td>
+                              <td style={{ padding: '8px' }}>
+                                {entry.spool?.color_hex ? (
+                                  <span style={{
+                                    display: 'inline-block',
+                                    width: '14px',
+                                    height: '14px',
+                                    borderRadius: '50%',
+                                    backgroundColor: `#${entry.spool.color_hex}`,
+                                    border: '1px solid #666'
+                                  }} />
+                                ) : entry.spool?.multi_color_hexes ? (
+                                  <span style={{
+                                    display: 'inline-block',
+                                    width: '14px',
+                                    height: '14px',
+                                    borderRadius: '50%',
+                                    background: `linear-gradient(${entry.spool.multi_color_direction === 'longitudinal' ? '0deg' : '90deg'}, ${entry.spool.multi_color_hexes.split(',').map(color => `#${color.trim()}`).join(', ')})`,
+                                    border: '1px solid #666'
+                                  }} />
+                                ) : null}
+                              </td>
+                              <td style={{ padding: '8px', fontSize: '13px' }}>
+                                {entry.spool?.name || 'Unknown'}
+                              </td>
+                              <td style={{ padding: '8px', fontSize: '13px' }}>
+                                {entry.spool?.vendor || 'Unknown'}
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '8px', fontSize: '13px', color: '#ff9800' }}>
+                                {entry.weight}
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '8px', fontSize: '13px', color: '#4caf50' }}>
+                                ${entry.cost || 'N/A'}
+                              </td>
+                              <td style={{ padding: '8px' }}></td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
-                {allUsageHistory.length === 0 && (
+                {groupedJobs.length === 0 && (
                   <div style={{ textAlign: 'center', color: '#999', padding: '40px' }}>
                     No print history found
                   </div>
