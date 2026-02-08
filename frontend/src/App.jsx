@@ -915,16 +915,32 @@ function App() {
                             </td>
                             <td style={{ padding: '8px' }}>
                               {isMultiFilament ? (
-                                <span style={{ color: '#999', fontSize: '14px' }}>
-                                  {job.entries.length} filaments
-                                </span>
+                                (() => {
+                                  // Check if all filaments are the same
+                                  const allSameFilament = job.entries.every(e => 
+                                    e.spool?.name === job.entries[0].spool?.name
+                                  );
+                                  return allSameFilament ? 
+                                    (job.entries[0].spool?.name || 'Unknown') :
+                                    <span style={{ color: '#999', fontSize: '14px' }}>
+                                      {job.entries.length} filaments
+                                    </span>;
+                                })()
                               ) : (
                                 job.entries[0].spool?.name || 'Unknown'
                               )}
                             </td>
                             <td style={{ padding: '8px' }}>
                               {isMultiFilament ? (
-                                <span style={{ color: '#999', fontSize: '14px' }}>Multiple</span>
+                                (() => {
+                                  // Check if all vendors are the same
+                                  const allSameVendor = job.entries.every(e => 
+                                    e.spool?.vendor === job.entries[0].spool?.vendor
+                                  );
+                                  return allSameVendor ? 
+                                    (job.entries[0].spool?.vendor || 'Unknown') :
+                                    <span style={{ color: '#999', fontSize: '14px' }}>Multiple</span>;
+                                })()
                               ) : (
                                 job.entries[0].spool?.vendor || 'Unknown'
                               )}
